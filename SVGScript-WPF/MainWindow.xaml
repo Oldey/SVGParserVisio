@@ -122,5 +122,6 @@
         <Label x:Name="label9" Content="Add custom attribute:" HorizontalAlignment="Left" Margin="25,516,0,0" VerticalAlignment="Top" Height="26" Width="125"/>
         <Label x:Name="label10" Content="=" HorizontalAlignment="Left" Margin="252,516,0,0" VerticalAlignment="Top" Height="26" Width="18"/>
         <Label x:Name="label11" Content="Перечень элементарных тэгов для добавления атрибута:" HorizontalAlignment="Left" Margin="25,547,0,0" VerticalAlignment="Top" Height="26" Width="324"/>
+        <CheckBox x:Name="checkBox3" Content="Offset" HorizontalAlignment="Left" Margin="417,702,0,0" VerticalAlignment="Top" IsChecked="True" Height="15" Width="75"/>
     </Grid>
 </Window>
