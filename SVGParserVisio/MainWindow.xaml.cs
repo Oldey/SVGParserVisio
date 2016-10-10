@@ -1,21 +1,14 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
-namespace SVGScript
+namespace SVGParserVisio
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
@@ -25,6 +18,35 @@ namespace SVGScript
         public MainWindow()
         {
             InitializeComponent();
+            var ci = new CultureInfo("en-US");
+            Thread.CurrentThread.CurrentUICulture = ci;
+            Thread.CurrentThread.CurrentCulture = CultureInfo.CreateSpecificCulture(ci.Name);
+
+            SetDecimal(ci.ToString());
+        }
+
+        //Если пользователь залез в региональные настройки языка и изменил настройку разделителя целой и дробной части для чисел, то можно принудительно вернуть правильные настройки для текущего приложения
+        //Смотри: "Панель управления"->"Язык и региональные стандарты"->"Форматы"->"Дополнительные параметры"->"Числа"->"Разделитель целой и дробной части"
+        //Например в настройках Windows, для русского языка пользователь может выставить разделителем точку, вместо запятой!
+        private void SetDecimal(string ci)
+        {
+            switch (ci)
+            {
+                case "en-US":
+                    Thread.CurrentThread.CurrentCulture.NumberFormat.NumberDecimalSeparator = ".";
+                    Thread.CurrentThread.CurrentUICulture.NumberFormat.NumberDecimalSeparator = ".";
+                    break;
+                case "es-GT":
+                    Thread.CurrentThread.CurrentCulture.NumberFormat.NumberDecimalSeparator = ".";
+                    Thread.CurrentThread.CurrentUICulture.NumberFormat.NumberDecimalSeparator = ".";
+                    break;
+                case "ru-RU":
+                    Thread.CurrentThread.CurrentCulture.NumberFormat.NumberDecimalSeparator = ",";
+                    Thread.CurrentThread.CurrentUICulture.NumberFormat.NumberDecimalSeparator = ",";
+                    break;
+                default:
+                    break;
+            }
         }
 
         // Open a raw .svg file
@@ -67,7 +89,7 @@ namespace SVGScript
                     MessageBoxButton.OK,
                     MessageBoxImage.Error,
                     MessageBoxResult.OK,
-                    MessageBoxOptions.DefaultDesktopOnly);
+                    MessageBoxOptions.None);
                 return;
             }
             listBox.Items.Clear();
@@ -105,11 +127,15 @@ namespace SVGScript
                 }
                 else continue;
             }
-
-            listBox.Items.Add("Visio-created titles removed: " + counterT);
-            if (checkBox1.IsChecked == true)
-                listBox.Items.Add("Descriptions removed: " + counterD);
             fileR.Close();
+
+            string mes = "Visio-created titles removed: " + counterT.ToString();
+            if (checkBox1.IsChecked == true)
+                mes += "\nDescriptions removed: " + counterD.ToString();
+            MessageBox.Show(
+                mes,
+                "Task complete",
+                MessageBoxButton.OK);
 
             StreamWriter fileW = new StreamWriter(textBox3.Text);
             temp.ForEach(fileW.WriteLine);
@@ -127,7 +153,7 @@ namespace SVGScript
                     MessageBoxButton.OK,
                     MessageBoxImage.Error,
                     MessageBoxResult.OK,
-                    MessageBoxOptions.DefaultDesktopOnly);
+                    MessageBoxOptions.None);
                 return;
             }
             listBox.Items.Clear();
@@ -141,10 +167,12 @@ namespace SVGScript
 
             while ((line = fileR.ReadLine()) != null)
             {
+                bool changed = false;
                 prevstr_index = prevstr.IndexOf("<g id=\"");
                 if (prevstr_index > -1)
                     if (line.Contains(prefix))
                     {
+                        changed = true;
                         pos_start = line.IndexOf("<title>") + 7;
                         id = line.Substring(pos_start, line.IndexOf("</title>") - pos_start); // Берем ID из title
                         pos_start_prev = prevstr_index + 7;
@@ -156,7 +184,11 @@ namespace SVGScript
                             prevstr = prevstr_temp1 + id + prevstr_temp2;
                         counter++;
                     }
-                listBox.Items.Add(prevstr);
+                ListBoxItem listBoxItem = new ListBoxItem();
+                if (changed)
+                    listBoxItem.Background = Brushes.LightGreen;
+                listBoxItem.Content = prevstr;
+                listBox.Items.Add(listBoxItem);
                 temp.Add(prevstr);
                 prevstr = line;
             }
@@ -166,7 +198,11 @@ namespace SVGScript
             StreamWriter fileW = new StreamWriter(textBox4.Text);
             temp.ForEach(fileW.WriteLine);
             fileW.Close();
-            listBox.Items.Add("Grouping done, count: " + counter);
+
+            MessageBox.Show(
+                "Grouping done, count: " + counter.ToString(),
+                "Task complete",
+                MessageBoxButton.OK);
         }
 
         // Добавление атрибута элементарным тэгам
@@ -180,12 +216,13 @@ namespace SVGScript
                     MessageBoxButton.OK,
                     MessageBoxImage.Error,
                     MessageBoxResult.OK,
-                    MessageBoxOptions.DefaultDesktopOnly);
+                    MessageBoxOptions.None);
                 return;
             }
             listBox.Items.Clear();
             StreamReader fileR = new StreamReader(textBox4.Text);
             List<String> temp = new List<String>();
+            List<Boolean> wasChanged = new List<Boolean>();
 
             List<String> elements1 = new List<String>();
             foreach (ListBoxItem item in listBoxAttribute1.Items)
@@ -207,6 +244,7 @@ namespace SVGScript
             while ((line = fileR.ReadLine()) != null)
             {
                 temp.Add(line);
+                wasChanged.Add(false);
             }
             int tempLength = temp.Count;
             int lineOfFirstG, lineOfLastG;
@@ -239,6 +277,7 @@ namespace SVGScript
                                 string temp2 = temp[k].Remove(0, temp[k].IndexOf(item) + (item).Length);
                                 temp[k] = temp1 + textBox1Attribute1.Text + "=\"" + textBox2Attribute1.Text + "\"" + temp2;
                                 counter++;
+                                wasChanged[k] = true;
 
                                 if (checkBox3.IsChecked == true && item == "<text" && temp[k - 1].Contains("<rect") && textBox1Attribute1.Text == "text-anchor")
                                 {
@@ -254,19 +293,18 @@ namespace SVGScript
                                     // Достаем x текста
                                     int pos2 = temp[k].IndexOf("x=\"") + 3,
                                         posStart = pos2;
-                                    string xStr = String.Empty;
                                     while (temp[k][pos2].ToString() != "\"")
                                     {
-                                        xStr += temp[k][pos2++];
+                                        pos2++;
                                     }
-                                    double x = /*double.Parse(xStr) + */halfRectWidth;
+                                    double x = halfRectWidth;
 
                                     int posEnd = pos2;
                                     string temp3 = temp[k].Remove(posStart);
                                     string temp4 = temp[k].Substring(posEnd);
                                     temp[k] = temp3 + x.ToString() + temp4;
+                                    wasChanged[k] = true;
                                 }
-
                                 break;
                             }
                         foreach (string item in elements2)
@@ -276,34 +314,34 @@ namespace SVGScript
                                 string temp2 = temp[k].Remove(0, temp[k].IndexOf(item) + (item).Length);
                                 temp[k] = temp1 + textBox1Attribute2.Text + "=\"" + textBox2Attribute2.Text + "\"" + temp2;
                                 counter++;
+                                wasChanged[k] = true;
 
                                 if (checkBox3.IsChecked == true && item == "<text" && temp[k - 1].Contains("<rect") && textBox1Attribute2.Text == "text-anchor")
+                                {
+                                    // Достаем ширину rectа
+                                    int pos1 = temp[k - 1].IndexOf("width=\"") + 7;
+                                    string rectWidthStr = String.Empty;
+                                    while (temp[k - 1][pos1].ToString() != "\"")
                                     {
-                                        // Достаем ширину rectа
-                                        int pos1 = temp[k - 1].IndexOf("width=\"") + 7;
-                                        string rectWidthStr = String.Empty;
-                                        while (temp[k - 1][pos1].ToString() != "\"")
-                                        {
-                                            rectWidthStr += temp[k - 1][pos1++];
-                                        }
-                                        double halfRectWidth = double.Parse(rectWidthStr) / 2;
-
-                                        // Достаем x текста
-                                        int pos2 = temp[k].IndexOf("x=\"") + 3,
-                                            posStart = pos2;
-                                        string xStr = String.Empty;
-                                        while (temp[k][pos2].ToString() != "\"")
-                                        {
-                                            xStr += temp[k][pos2++];
-                                        }
-                                        double x = /*double.Parse(xStr) + */halfRectWidth;
-
-                                        int posEnd = pos2;
-                                        string temp3 = temp[k].Remove(posStart);
-                                        string temp4 = temp[k].Substring(posEnd);
-                                        temp[k] = temp3 + x.ToString() + temp4;
+                                        rectWidthStr += temp[k - 1][pos1++];
                                     }
+                                    double halfRectWidth = double.Parse(rectWidthStr) / 2;
 
+                                    // Достаем x текста
+                                    int pos2 = temp[k].IndexOf("x=\"") + 3,
+                                        posStart = pos2;
+                                    while (temp[k][pos2].ToString() != "\"")
+                                    {
+                                        pos2++;
+                                    }
+                                    double x = /*double.Parse(xStr) + */halfRectWidth;
+
+                                    int posEnd = pos2;
+                                    string temp3 = temp[k].Remove(posStart);
+                                    string temp4 = temp[k].Substring(posEnd);
+                                    temp[k] = temp3 + x.ToString() + temp4;
+                                    wasChanged[k] = true;
+                                }
                                 break;
                             }
                         foreach (string item in elements3)
@@ -313,6 +351,7 @@ namespace SVGScript
                                 string temp2 = temp[k].Remove(0, temp[k].IndexOf(item) + (item).Length);
                                 temp[k] = temp1 + textBox1Attribute3.Text + "=\"" + textBox2Attribute3.Text + "\"" + temp2;
                                 counter++;
+                                wasChanged[k] = true;
 
                                 if (checkBox3.IsChecked == true && item == "<text" && temp[k - 1].Contains("<rect") && textBox1Attribute3.Text == "text-anchor")
                                 {
@@ -328,19 +367,18 @@ namespace SVGScript
                                     // Достаем x текста
                                     int pos2 = temp[k].IndexOf("x=\"") + 3,
                                         posStart = pos2;
-                                    string xStr = String.Empty;
                                     while (temp[k][pos2].ToString() != "\"")
                                     {
-                                        xStr += temp[k][pos2++];
+                                        pos2++;
                                     }
-                                    double x = /*double.Parse(xStr) + */halfRectWidth;
+                                    double x = halfRectWidth;
 
                                     int posEnd = pos2;
                                     string temp3 = temp[k].Remove(posStart);
                                     string temp4 = temp[k].Substring(posEnd);
                                     temp[k] = temp3 + x.ToString() + temp4;
+                                    wasChanged[k] = true;
                                 }
-
                                 break;
                             }
                         foreach (string item in elements4)
@@ -350,6 +388,7 @@ namespace SVGScript
                                 string temp2 = temp[k].Remove(0, temp[k].IndexOf(item) + (item).Length);
                                 temp[k] = temp1 + textBox1Attribute4.Text + "=\"" + textBox2Attribute4.Text + "\"" + temp2;
                                 counter++;
+                                wasChanged[k] = true;
 
                                 if (checkBox3.IsChecked == true && item == "<text" && temp[k - 1].Contains("<rect") && textBox1Attribute4.Text == "text-anchor")
                                 {
@@ -365,19 +404,18 @@ namespace SVGScript
                                     // Достаем x текста
                                     int pos2 = temp[k].IndexOf("x=\"") + 3,
                                         posStart = pos2;
-                                    string xStr = String.Empty;
                                     while (temp[k][pos2].ToString() != "\"")
                                     {
-                                        xStr += temp[k][pos2++];
+                                        pos2++;
                                     }
-                                    double x = /*double.Parse(xStr) + */halfRectWidth;
+                                    double x = halfRectWidth;
 
                                     int posEnd = pos2;
                                     string temp3 = temp[k].Remove(posStart);
                                     string temp4 = temp[k].Substring(posEnd);
                                     temp[k] = temp3 + x.ToString() + temp4;
+                                    wasChanged[k] = true;
                                 }
-
                                 break;
                             }
                         foreach (string item in elements5)
@@ -387,6 +425,7 @@ namespace SVGScript
                                 string temp2 = temp[k].Remove(0, temp[k].IndexOf(item) + (item).Length);
                                 temp[k] = temp1 + textBox1Attribute5.Text + "=\"" + textBox2Attribute5.Text + "\"" + temp2;
                                 counter++;
+                                wasChanged[k] = true;
 
                                 if (checkBox3.IsChecked == true && item == "<text" && temp[k - 1].Contains("<rect") && textBox1Attribute5.Text == "text-anchor")
                                 {
@@ -402,19 +441,18 @@ namespace SVGScript
                                     // Достаем x текста
                                     int pos2 = temp[k].IndexOf("x=\"") + 3,
                                         posStart = pos2;
-                                    string xStr = String.Empty;
                                     while (temp[k][pos2].ToString() != "\"")
                                     {
-                                        xStr += temp[k][pos2++];
+                                        pos2++;
                                     }
-                                    double x = /*double.Parse(xStr) + */halfRectWidth;
+                                    double x = halfRectWidth;
 
                                     int posEnd = pos2;
                                     string temp3 = temp[k].Remove(posStart);
                                     string temp4 = temp[k].Substring(posEnd);
                                     temp[k] = temp3 + x.ToString() + temp4;
+                                    wasChanged[k] = true;
                                 }
-
                                 break;
                             }
                     }
@@ -423,14 +461,22 @@ namespace SVGScript
             }
             for (int i = 0; i < tempLength; i++)
             {
-                listBox.Items.Add(temp[i]);
+                ListBoxItem listBoxItem = new ListBoxItem();
+                if (wasChanged[i])
+                    listBoxItem.Background = Brushes.LightBlue;
+                listBoxItem.Content = temp[i];
+                listBox.Items.Add(listBoxItem);
             }
             fileR.Close();
 
             StreamWriter fileW = new StreamWriter(textBox8.Text);
             temp.ForEach(fileW.WriteLine);
             fileW.Close();
-            listBox.Items.Add("Adding attributes done, count: " + counter);
+
+            MessageBox.Show(
+                "Adding attributes done, count: " + counter.ToString(),
+                "Task complete",
+                MessageBoxButton.OK);
         }
 
         private void button2_Click(object sender, RoutedEventArgs e)
